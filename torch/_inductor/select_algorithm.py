@@ -22,15 +22,11 @@ from torch._dynamo.utils import counters, identity, preserve_rng_state
 from . import config, ir
 from .autotune_process import TensorMeta, TritonBenchmarkRequest
 from .codecache import code_hash, PersistentCache, PyCodeCache
-from .codegen.common import (
-    ChoiceCaller,
-    IndentedBuffer,
-    KernelTemplate,
-    PrimitiveInfoType,
-)
+from .codegen.common import IndentedBuffer, KernelTemplate
 from .codegen.triton import texpr, TritonKernel, TritonPrinter, TritonScheduling
 from .codegen.triton_utils import config_of, signature_to_meta
 from .exc import CUDACompileError
+from .ir import ChoiceCaller, PrimitiveInfoType
 from .utils import (
     do_bench,
     get_dtype_size,
@@ -654,7 +650,7 @@ class ExternKernelChoice:
         )
 
 
-class TritonTemplateCaller(ChoiceCaller):
+class TritonTemplateCaller(ir.TritonTemplateCallerBase):
     def __init__(
         self,
         name,
@@ -713,6 +709,9 @@ class TritonTemplateCaller(ChoiceCaller):
     def info_dict(self) -> Dict[str, Union[PrimitiveInfoType, List[PrimitiveInfoType]]]:
         """Information returned here is logged to the autotune log file when that is enabled."""
         return self.log_info
+
+    def get_make_kernel_render(self):
+        return self.make_kernel_render
 
 
 class ExternKernelCaller(ChoiceCaller):
@@ -811,6 +810,7 @@ class AlgorithmSelectorCache(PersistentCache):
         # generating a random torch.Tensor for benchmarking.
         input_gen_fns: Optional[Dict[int, Callable[[ir.Buffer], torch.Tensor]]] = None,
         precompilation_timeout_seconds: int = 60 * 60,
+        return_multi_template=False,
     ):
         from .codegen.cuda.cuda_kernel import CUDATemplateCaller
 
@@ -908,6 +908,40 @@ class AlgorithmSelectorCache(PersistentCache):
             or config.trace.log_autotuning_results
         ):
             self.log_results(name, input_nodes, timings, autotune_elapse)
+
+        if return_multi_template:
+            min_extern_choice = float("inf")
+            for choice, timing in timings.items():
+                if isinstance(choice, ExternKernelCaller):
+                    min_extern_choice = min(min_extern_choice, timing)
+
+            timings = {
+                choice: time
+                for choice, time in timings.items()
+                if (
+                    time <= min_extern_choice
+                    or not isinstance(choice, ExternKernelCaller)
+                )
+            }
+
+            if len(timings) == 1:
+                return next(iter(timings)).output_node()
+
+            if config.debug_filter_choice:
+                timings = {
+                    choice: time
+                    for choice, time in timings.items()
+                    if config.debug_filter_choice(choice)
+                }
+
+            return torch._inductor.ir.TensorBox.create(
+                torch._inductor.ir.MultiTemplateBuffer(
+                    layout,
+                    input_nodes,
+                    timings,
+                )
+            )
+
         selected_choice = builtins.min(timings, key=timings.__getitem__).output_node()
         log.debug("selected choice: %s", str(selected_choice))
         return selected_choice
@@ -1140,6 +1174,14 @@ def autotune_select_algorithm(*args, **kwargs):
     global _ALGORITHM_SELECTOR_CACHE
     if _ALGORITHM_SELECTOR_CACHE is None:
         _ALGORITHM_SELECTOR_CACHE = AlgorithmSelectorCache()
+
+    if "return_multi_template" not in kwargs:
+        # TODO - enable multi templates even if benchmark_fusion not enabled
+        kwargs["return_multi_template"] = (
+            torch._inductor.config.benchmark_multi_templates
+            and torch._inductor.config.benchmark_fusion
+        )
+
     return _ALGORITHM_SELECTOR_CACHE(*args, **kwargs)
 
 
