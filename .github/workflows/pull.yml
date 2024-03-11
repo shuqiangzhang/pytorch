@@ -58,7 +58,7 @@ jobs:
       build-environment: linux-jammy-py3.8-gcc11
       docker-image: ${{ needs.linux-jammy-py3_8-gcc11-build.outputs.docker-image }}
       test-matrix: ${{ needs.linux-jammy-py3_8-gcc11-build.outputs.test-matrix }}
-      s3-bucket: pytorch-ci-artifacts
+      s3-bucket: gha-artifacts
       aws-role-to-assume: arn:aws:iam::308535385114:role/gha_workflow_pytorch_artifacts
 
   linux-docs:
