@@ -5,7 +5,7 @@ from . import _pytree as fx_pytree
 from ._compatibility import compatibility
 
 import contextlib
-from typing import TYPE_CHECKING, Callable, Any, List, Dict, NamedTuple, Optional, Tuple, Set, FrozenSet, Type
+from typing import TYPE_CHECKING, Callable, Any, List, Dict, Iterator, NamedTuple, Optional, Tuple, Set, FrozenSet, Type
 from dataclasses import dataclass
 from contextlib import contextmanager
 import copy
@@ -745,6 +745,35 @@ class _PyTreeCodeGen(CodeGen):
         else:
             return super().generate_output(output_args)
 
+class _GraphSideTable:
+    """
+    Side table for the graph for the purpose of doing fast queries
+    """
+    def __init__(self):
+        self.table: Dict[str, Dict[Target, List[Node]]] = defaultdict(lambda: defaultdict(list))
+
+    def __contains__(self, node) -> bool:
+        return node in self.table[node.op][node.target]
+
+    def insert(self, node: Node) -> None:
+        self.table[node.op][node.target].append(node)
+
+    def remove(self, node: Node) -> None:
+        self.table[node.op][node.target].remove(node)
+
+    def find_nodes(self, *, op: Optional[str] = None, target: Optional['Target'] = None) -> Iterator[Node]:
+        assert op is not None or target is not None
+        if target is None:
+            assert op is not None
+            for nodes in self.table[op].values():
+                yield from nodes
+        elif op is None:
+            assert target is not None
+            for targets in self.table.values():
+                yield from targets[target]
+        else:
+            yield from self.table[op][target]
+
 @compatibility(is_backward_compatible=True)
 class Graph:
     """
@@ -806,6 +835,7 @@ class Graph:
         self._tracer_extras = tracer_extras
         self._codegen = CodeGen()
         self._co_fields : Dict[str, Any] = {}
+        self._side_table = _GraphSideTable()
 
     @property
     def owning_module(self):
@@ -829,6 +859,10 @@ class Graph:
             this list to switch iteration order.
         """
         return _node_list(self)
+
+    @compatibility(is_backward_compatible=False)
+    def find_nodes(self, *, op: Optional[str] = None, target: Optional['Target'] = None) -> Iterator[Node]:
+        return self._side_table.find_nodes(op=op, target=target)
 
     @compatibility(is_backward_compatible=True)
     def graph_copy(self, g : 'Graph', val_map : Dict[Node, Node], return_output_node=False) -> 'Optional[Argument]':
@@ -919,6 +953,7 @@ class Graph:
         self._graph_namespace.associate_name_with_obj(name, n)
 
         self._insert(n)
+        self._side_table.insert(n)
         self._len += 1
         return n
 
@@ -953,6 +988,7 @@ class Graph:
             warnings.warn(f"erase_node({to_erase}) on an already erased node")
             return
 
+        self._side_table.remove(to_erase)
         to_erase._remove_from_list()
         to_erase._erased = True  # iterators may retain handles to erased nodes
         self._len -= 1
@@ -1413,6 +1449,8 @@ class Graph:
                 raise RuntimeError(f'Node {node} had unknown opcode {node.op}!')
             if node.graph is not self:
                 raise RuntimeError(f'Node \'{node}\' does not belong to this Graph!')
+            if node not in self._side_table:
+                raise RuntimeError(f"Node \'{node}\' is not added to the side table")
             map_arg(node.args, lambda arg: check_arg(arg, node))
             map_arg(node.kwargs, lambda arg: check_arg(arg, node))
             seen_values.add(node)
