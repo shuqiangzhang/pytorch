@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import dis
 import functools
 import itertools
@@ -34,6 +35,7 @@ from torch.fx.experimental.symbolic_shapes import (
 )
 from torch.fx.graph_module import _forward_from_src as original_forward_from_src
 from torch.nn.parallel.distributed import DistributedDataParallel
+from torch.overrides import _pop_mode_temporarily
 from torch.utils._python_dispatch import _disable_current_modes
 from torch.utils._traceback import format_traceback_short
 
@@ -165,19 +167,24 @@ def preserve_global_state(fn):
             return fn(*args, **kwargs)
         finally:
             cleanup.close()
-            torch._C._set_grad_enabled(prior_grad_mode)
-            torch.torch.autograd.grad_mode._enter_inference_mode(prior_inference_mode)
-            torch.use_deterministic_algorithms(
-                prior_deterministic, warn_only=prior_warn_only
+            should_pop_torch_mode = (_pop_mode_temporarily()
+                if torch._C._is_torch_function_mode_enabled()
+                else contextlib.nullcontext()
             )
-            random.setstate(py_rng_state)
-            torch.random.set_rng_state(torch_rng_state)
-            if torch.cuda.is_available():
-                torch.cuda.set_rng_state(cuda_rng_state)  # type: ignore[possibly-undefined]
-            torch.fx.graph_module._forward_from_src = prior_fwd_from_src
-            assert (
-                guards.check()
-            ), "Global state changed while dynamo tracing, please report a bug"
+            with should_pop_torch_mode:
+                torch._C._set_grad_enabled(prior_grad_mode)
+                torch.torch.autograd.grad_mode._enter_inference_mode(prior_inference_mode)
+                torch.use_deterministic_algorithms(
+                    prior_deterministic, warn_only=prior_warn_only
+                )
+                random.setstate(py_rng_state)
+                torch.random.set_rng_state(torch_rng_state)
+                if torch.cuda.is_available():
+                    torch.cuda.set_rng_state(cuda_rng_state)  # type: ignore[possibly-undefined]
+                torch.fx.graph_module._forward_from_src = prior_fwd_from_src
+                assert (
+                    guards.check()
+                ), "Global state changed while dynamo tracing, please report a bug"
 
     _fn._torchdynamo_orig_callable = fn  # type: ignore[attr-defined]
     return _fn

@@ -33,6 +33,7 @@ from torch.fx._lazy_graph_module import _make_graph_module  # type: ignore[attr-
 from torch.fx.experimental._backward_state import BackwardState
 from torch.fx.experimental.sym_node import SymNode
 from torch.fx.experimental.symbolic_shapes import free_symbols, is_symbolic, ShapeEnv
+from torch.overrides import _pop_mode_temporarily
 from torch.utils._python_dispatch import is_traceable_wrapper_subclass
 from torch.utils._sympy.interp import sympy_interp
 from torch.utils._sympy.reference import PythonReferenceAnalysis
@@ -1203,7 +1204,11 @@ class OutputGraph(Checkpointable[OutputGraphState]):
             # a lot of fake_tensor ownership assumptions and runs afoul of detect_fake_mode
             self.tracing_context.fake_mode = backend_fake_mode
 
-        with self.restore_global_state():
+        should_pop_torch_mode = (_pop_mode_temporarily()
+            if torch._C._is_torch_function_mode_enabled()
+            else contextlib.nullcontext()
+        )
+        with should_pop_torch_mode, self.restore_global_state():
             compiled_fn = self.call_user_compiler(gm)
         compiled_fn = disable(compiled_fn)
 

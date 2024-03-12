@@ -3877,6 +3877,39 @@ def forward(self, arg0_1):
                 for v1, v2 in zip(nn_module_stack_1.values(), nn_module_stack_2.values()):
                     self.assertEqual(v1, v2)
 
+    def test_predispatch_cond(self):
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.register_buffer("pred", torch.tensor(False))
+                self.register_buffer("t", torch.tensor(10))
+
+            def forward(self, x, y):
+                return torch.cond(
+                    self.pred,
+                    lambda x, y: x - 1 + self.t + y,
+                    lambda x, y: x + 1 - self.t + y,
+                    [x, y],
+                )
+
+        model = Model()
+        exported_program = torch.export._trace._export(
+            model,
+            (torch.tensor(10), torch.tensor(12)),
+            {},
+            dynamic_shapes=None,
+            pre_dispatch=True,
+            strict=False
+        )
+
+        self.assertExpectedInline(str(exported_program.graph_module.code.strip()), """\
+def forward(self, arg0_1, arg1_1, arg2_1, arg3_1):
+    true_graph_0 = self.true_graph_0
+    false_graph_0 = self.false_graph_0
+    conditional = torch.ops.higher_order.cond(arg0_1, true_graph_0, false_graph_0, [arg1_1, arg2_1, arg3_1]);  arg0_1 = true_graph_0 = false_graph_0 = arg1_1 = arg2_1 = arg3_1 = None
+    getitem = conditional[0];  conditional = None
+    return (getitem,)""")  # noqa: B950
+
 
 @unittest.skipIf(not torchdynamo.is_dynamo_supported(), "dynamo doesn't support")
 class TestExportCustomClass(TorchTestCase):
