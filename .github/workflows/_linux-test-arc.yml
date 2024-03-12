@@ -82,6 +82,13 @@ jobs:
       - name: Setup Linux
         uses: ./.github/actions/setup-linux
 
+      - name: Check Docker
+        env:
+          DOCKER_HOST: unix:///run/docker/docker.sock
+        run: |
+          echo $DOCKER_HOST
+          docker info
+
       - name: Configure aws credentials
         if: ${{ inputs.aws-role-to-assume != '' }}
         uses: aws-actions/configure-aws-credentials@v3
@@ -217,6 +224,9 @@ jobs:
           else
             TEST_COMMAND=.ci/pytorch/test.sh
           fi
+          
+          echo $DOCKER_HOST
+          docker info
 
           # detached container should get cleaned up by teardown_ec2_linux
           # TODO: Stop building test binaries as part of the build phase
