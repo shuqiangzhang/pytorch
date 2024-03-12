@@ -42,6 +42,7 @@ from torch.testing._internal.common_utils import (
     skipIfTorchDynamo,
     subtest,
     TEST_WITH_ROCM,
+    TEST_WITH_TORCHDYNAMO,
     TestCase,
 )
 
@@ -3486,7 +3487,6 @@ class TestNestedTensorSubclass(TestCase):
         self.assertTrue(isinstance(nt.shape[1], torch.SymInt))
         self.assertEqual(nt.shape[2:], first_t.shape[1:])
 
-    @xfailIfTorchDynamo
     @dtypes(torch.float, torch.double, torch.half)
     @parametrize("requires_grad", [False, True])
     @parametrize("components_require_grad", [False, True])
@@ -3509,7 +3509,6 @@ class TestNestedTensorSubclass(TestCase):
                 t = t if isinstance(t, torch.Tensor) else torch.as_tensor(t)
                 self.assertTrue(t.grad is None)
 
-    @xfailIfTorchDynamo
     @dtypes(torch.float, torch.double, torch.half)
     @parametrize("components_require_grad", [False, True])
     def test_jagged_layout_construction_as_nested_tensor(
@@ -3912,13 +3911,14 @@ class TestNestedTensorSubclass(TestCase):
         attn_d1 = torch.nn.functional.scaled_dot_product_attention(q_d1, k_d1, v_d1).transpose(1, 2)
         attn_d2 = torch.nn.functional.scaled_dot_product_attention(q_d2, k_d2, v_d2).transpose(1, 2)
 
-        compiled_sdpa = torch.compile(torch.nn.functional.scaled_dot_product_attention)
+        compiled_sdpa = torch.compile(torch.nn.functional.scaled_dot_product_attention, fullgraph=True)
         attn_nt = compiled_sdpa(q_nt, k_nt, v_nt).transpose(1, 2)
 
         attn_nts = attn_nt.unbind()
         self.assertEqual(attn_d1, attn_nts[0].unsqueeze(0), atol=output_ref_atol, rtol=output_ref_rtol)
         self.assertEqual(attn_d2, attn_nts[1].unsqueeze(0), atol=output_ref_atol, rtol=output_ref_rtol)
 
+    @xfailIfTorchDynamo
     @dtypes(torch.float32, torch.double, torch.half)
     def test_sdpa_with_constant_sequence_length(self, device, dtype):
         # shape (B, P*, S, D)
