@@ -82,13 +82,6 @@ jobs:
       - name: Setup Linux
         uses: ./.github/actions/setup-linux
 
-      - name: Check Docker
-        env:
-          DOCKER_HOST: unix:///run/docker/docker.sock
-        run: |
-          echo $DOCKER_HOST
-          docker info
-
       - name: Configure aws credentials
         if: ${{ inputs.aws-role-to-assume != '' }}
         uses: aws-actions/configure-aws-credentials@v3
@@ -283,6 +276,10 @@ jobs:
             -w /var/lib/jenkins/workspace \
             "${DOCKER_IMAGE}"
           )
+
+          echo "${container_name}"
+          sleep(10000)
+
           # Propagate download.pytorch.org IP to container
           grep download.pytorch.org /etc/hosts | docker exec -i "${container_name}" sudo bash -c "/bin/cat >> /etc/hosts"
           echo "DOCKER_CONTAINER_ID=${container_name}" >> "${GITHUB_ENV}"
