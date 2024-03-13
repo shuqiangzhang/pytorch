@@ -1761,6 +1761,11 @@ def register_onednn_fusion_ops():
 register_onednn_fusion_ops()
 
 
+@register_lowering(torch.ops.aten._weight_int8pack_mm, type_promotion_kind=None)
+def woq_mm_int8(x: TensorBox, weight: TensorBox, scales: TensorBox):
+    return TensorBox.create(ir.WeightOnlyQuantizedMatMulInt8.create(x, weight, scales))
+
+
 def fallback_handler(kernel, add_to_fallback_set=True):
     if add_to_fallback_set:
         fallbacks.add(kernel)
