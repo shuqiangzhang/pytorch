@@ -24,7 +24,12 @@ runs:
       run: |
         # Remove any previous test jsons if they exist
         rm -f test-jsons-*.zip
-        zip -r "test-jsons-${FILE_SUFFIX}.zip" test -i '*.json'
+
+        whoami
+        pwd
+        ls -la
+
+        sudo zip -r "test-jsons-${FILE_SUFFIX}.zip" test -i '*.json'
 
     - name: Zip test reports for upload
       if: runner.os != 'Windows' && !inputs.use-gha
