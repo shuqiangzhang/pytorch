@@ -230,7 +230,7 @@ jobs:
           # shellcheck disable=SC2086,SC2090
 
           # echo "${container_name}"
-           sleep(10000)
+          sleep 10000
 
           # Propagate download.pytorch.org IP to container
           grep download.pytorch.org /etc/hosts | docker exec -i "${container_name}" sudo bash -c "/bin/cat >> /etc/hosts"
