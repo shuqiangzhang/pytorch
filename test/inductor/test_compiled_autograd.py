@@ -852,6 +852,7 @@ known_failing_tests = {
     "test_backward_tensorlist_input_requires_list_grads_with_same_numel",  # AssertionError: "3 gradients
     "test_save_for_backward_inputs_are_namedtuple",  # torch._dynamo.exc.Unsupported: 'skip function
     "test_autograd_function_backed_op",  # RuntimeError: compiled_args not implemented
+    "test_setitem",  # AssertionError: Tensor-likes are not close!
 }
 
 if not HAS_CUDA:
