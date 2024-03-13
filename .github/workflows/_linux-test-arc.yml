@@ -218,20 +218,63 @@ jobs:
             TEST_COMMAND=.ci/pytorch/test.sh
           fi
           
-          echo $DOCKER_HOST
-          docker info
+          pwd
+          ls -la
           
-          echo "/tmp/github_env_${GITHUB_RUN_ID}"
-          # "${DOCKER_IMAGE}"
-
           # detached container should get cleaned up by teardown_ec2_linux
           # TODO: Stop building test binaries as part of the build phase
           # Used for GPU_FLAG since that doesn't play nice
           # shellcheck disable=SC2086,SC2090
-
-          # echo "${container_name}"
-          sleep 10000
-
+          container_name=$(docker run \
+            ${GPU_FLAG:-} \
+            -e BUILD_ENVIRONMENT \
+            -e PR_NUMBER \
+            -e GITHUB_ACTIONS \
+            -e GITHUB_REPOSITORY \
+            -e GITHUB_WORKFLOW \
+            -e GITHUB_JOB \
+            -e GITHUB_RUN_ID \
+            -e GITHUB_RUN_NUMBER \
+            -e GITHUB_RUN_ATTEMPT \
+            -e JOB_ID \
+            -e JOB_NAME \
+            -e BASE_SHA \
+            -e BRANCH \
+            -e SHA1 \
+            -e AWS_DEFAULT_REGION \
+            -e IN_WHEEL_TEST \
+            -e SHARD_NUMBER \
+            -e TEST_CONFIG \
+            -e NUM_TEST_SHARDS \
+            -e REENABLED_ISSUES \
+            -e CONTINUE_THROUGH_ERROR \
+            -e VERBOSE_TEST_LOGS \
+            -e NO_TEST_TIMEOUT \
+            -e NO_TD \
+            -e PR_LABELS \
+            -e MAX_JOBS="$(nproc --ignore=2)" \
+            -e SCCACHE_BUCKET \
+            -e SCCACHE_S3_KEY_PREFIX \
+            -e XLA_CUDA \
+            -e XLA_CLANG_CACHE_S3_BUCKET_NAME \
+            -e PYTORCH_TEST_CUDA_MEM_LEAK_CHECK \
+            -e PYTORCH_TEST_RERUN_DISABLED_TESTS \
+            -e SKIP_SCCACHE_INITIALIZATION=1 \
+            -e HUGGING_FACE_HUB_TOKEN \
+            -e DASHBOARD_TAG \
+            --env-file="/tmp/github_env_${GITHUB_RUN_ID}" \
+            --security-opt seccomp=unconfined \
+            --cap-add=SYS_PTRACE \
+            --ipc=host \
+            --shm-size="${SHM_SIZE}" \
+            --tty \
+            --detach \
+            --name="${container_name}" \
+            --user jenkins \
+            -v "${GITHUB_WORKSPACE}:/var/lib/jenkins/workspace" \
+            -w /var/lib/jenkins/workspace \
+            "${DOCKER_IMAGE}"
+          )
           # Propagate download.pytorch.org IP to container
           grep download.pytorch.org /etc/hosts | docker exec -i "${container_name}" sudo bash -c "/bin/cat >> /etc/hosts"
           echo "DOCKER_CONTAINER_ID=${container_name}" >> "${GITHUB_ENV}"
