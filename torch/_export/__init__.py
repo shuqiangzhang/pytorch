@@ -127,7 +127,7 @@ def capture_pre_autograd_graph(
         An nn.Module containing the traced method.
 
     """
-    from torch.export._trace import _convert_input_to_fake, DEFAULT_EXPORT_DYNAMO_CONFIG
+    from torch.export._trace import _export
     from torch.export.dynamic_shapes import _process_dynamic_shapes
 
     log_export_usage(event="export.private_api", flags={"capture_pre_autograd_graph"})
@@ -139,48 +139,6 @@ def capture_pre_autograd_graph(
 
     constraints = _process_dynamic_shapes(f, args, kwargs, dynamic_shapes)
 
-    # Do not decompose dropout for exported models, because in eval mode the dropout
-    # op disappears from the graph, which makes it difficult to switch to train mode.
-    # See https://github.com/pytorch/pytorch/pull/115258#issuecomment-1900755832.
-    decomp_table = {
-        op: op.decompose
-        for op in FunctionalTensor.maybe_aliasing_or_mutating_ops
-        if op != torch.ops.aten.dropout.default
-    }
-    with torch._dynamo.config.patch(dataclasses.asdict(DEFAULT_EXPORT_DYNAMO_CONFIG)):
-        m = torch._dynamo.export(
-            f,
-            constraints=constraints,
-            assume_static_by_default=True,
-            tracing_mode="symbolic",
-            decomposition_table=decomp_table,
-            pre_dispatch=True,
-            aten_graph=True,
-            _log_export_usage=False,
-        )(
-            *args,
-            **kwargs,
-        )[0]
-
-        _, _, _, fake_mode = _convert_input_to_fake(m, args, kwargs)
-
-        m.meta["inline_constraints"] = {
-            k: v
-            for k, v in fake_mode.shape_env.var_to_range.items()
-            if re.match(r"^[if]\d+$", str(k))
-        }
-
-        if isinstance(f, torch.nn.Module):
-            from torch.export._trace import _restore_state_dict
-            _restore_state_dict(f, m)
-
-        flat_args, _ = pytree.tree_flatten((args, kwargs or {}))
-        range_constraints = _process_constraints(fake_mode, m, 0, flat_args)
-
-        module = _create_stateful_graph_module(
-            m,
-            range_constraints=range_constraints,
-        )
 
     error_message = \
         """
@@ -202,6 +160,8 @@ def capture_pre_autograd_graph(
 
     def _eval(self, mode: bool = True):
         raise NotImplementedError(error_message)
+
+    module = _export(f, args, kwargs, constraints, pre_dispatch=True).module()
 
     module.train = types.MethodType(_train, module)  # type: ignore[method-assign]
     module.eval = types.MethodType(_eval, module)  # type: ignore[method-assign]

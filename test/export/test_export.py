@@ -3155,7 +3155,6 @@ def forward(self, arg_0):
             orig_eager, (torch.rand(2, 3),), {}, pre_dispatch=True
         ).module()
         for k, v in orig_eager.state_dict().items():
-            normalized_k = k.replace(".", "_")
             self.assertIn(k, pre_autograd_gm.state_dict())
             self.assertEqual(v, pre_autograd_gm.state_dict()[k])
         self.assertTrue(torch.allclose(pre_autograd_gm(test_inp), orig_eager(test_inp)))
