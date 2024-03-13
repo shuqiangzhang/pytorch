@@ -278,8 +278,8 @@ jobs:
             "${DOCKER_IMAGE}"
           )
 
-#          echo "${container_name}"
-#          sleep(10000)
+          # echo "${container_name}"
+          # sleep(10000)
 
           # Propagate download.pytorch.org IP to container
           grep download.pytorch.org /etc/hosts | docker exec -i "${container_name}" sudo bash -c "/bin/cat >> /etc/hosts"
