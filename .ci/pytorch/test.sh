@@ -27,6 +27,8 @@ if [[ "$BUILD_ENVIRONMENT" == linux-jammy-py3.8-gcc11* ]] ; then
   sudo rm "/opt/conda/envs/py_${ANACONDA_PYTHON_VERSION}/lib/libstdc++.so.6"
 fi
 
+sudo chown -R jenkins ../workspace
+
 export VALGRIND=ON
 # export TORCH_INDUCTOR_INSTALL_GXX=ON
 if [[ "$BUILD_ENVIRONMENT" == *clang9* ]]; then
