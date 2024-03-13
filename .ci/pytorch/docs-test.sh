@@ -6,4 +6,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 echo "Testing pytorch docs"
 
 cd docs
+whoami
+pwd
+ls -l
+sudo mkdir source/scripts/activation_images
 make doctest
